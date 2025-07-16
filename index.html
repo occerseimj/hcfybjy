@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>收费状态查询</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1><i class="fas fa-qrcode"></i> 收费状态查询</h1>
+        
+        <!-- QR Code Scanner -->
+        <div id="qr-reader"></div>
+        <div class="scanning-notice" id="scanning-notice">
+            <i class="fas fa-camera"></i> 摄像头已启用，请对准二维码进行扫描
+        </div>
+
+        <!-- Input Fields -->
+        <div class="input-section" id="input-section">
+            <div class="input-container">
+                <label for="employee-id"><i class="fas fa-id-card"></i> 工号:</label>
+                <input type="text" id="employee-id" placeholder="请输入您的工号">
+            </div>
+            <div class="input-container">
+                <label for="employee-name"><i class="fas fa-user"></i> 姓名:</label>
+                <input type="text" id="employee-name" placeholder="请输入您的姓名">
+            </div>
+        </div>
+
+        <!-- Buttons -->
+        <div class="button-container">
+            <button id="scan-button">
+                <i class="fas fa-camera"></i> 开始扫码
+            </button>
+            <button id="display-button">
+                <i class="fas fa-eye"></i> 展示内容
+            </button>
+        </div>
+
+        <!-- Output Section -->
+        <div class="output">
+            <h3><i class="fas fa-poll"></i> 查询结果 <span class="status-indicator" id="status-indicator"></span></h3>
+            <pre id="result">等待扫描结果...</pre>
+        </div>
+        
+        <div class="instructions">
+            <h3><i class="fas fa-info-circle"></i> 使用说明</h3>
+            <ul>
+                <li>建议使用Microsoft Edge浏览器</li>
+            </ul>
+            <div class="warning">
+                <i class="fas fa-exclamation-triangle"></i>
+                区域一体化医疗系统上线后，此系统会适时停用
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>系统版本: 0.8.2 | 最后更新: 2025-07-13</p>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量声明
+        let qrCodeContent = ""; // 存储扫描到的二维码原始内容
+        let qrScanner = null;   // 存储二维码扫描器实例
+        // 获取页面元素引用
+        const statusIndicator = document.getElementById('status-indicator'); // 状态指示灯元素
+        const scanningNotice = document.getElementById('scanning-notice');   // 扫描提示元素
+        const inputSection = document.getElementById('input-section');       // 输入区域元素
+        const displayButton = document.getElementById('display-button');     // 展示按钮元素
+    
+        /**
+         * 解析二维码内容函数
+         * @param {string} content - 扫描到的二维码原始字符串
+         * @returns {object} 包含解析结果的对象，结构如下：
+         *   {
+         *     billNo: string | null,      // 单据号
+         *     patientId: string | null,    // 病人ID
+         *     outpatientNo: string | null, // 门诊号
+         *     isValid: boolean             // 是否有效二维码
+         *   }
+         */
+        function parseQrCode(content) {
+            // 初始化解析结果对象
+            const result = {
+                billNo: null,
+                patientId: null,
+                outpatientNo: null,
+                isValid: false
+            };
+            
+            // 检查是否是目标格式（包含特定域名）
+            if (content.includes('https://hcfybjy.cn/qr_code')) {
+                try {
+                    // 使用正则表达式提取单据号 (匹配 no=后面的数字)
+                    const noMatch = content.match(/no=(\d+)/);
+                    if (noMatch && noMatch[1]) {
+                        result.billNo = noMatch[1];
+                    }
+                    
+                    // 使用正则表达式提取病人ID (匹配 id=后面的数字)
+                    const idMatch = content.match(/id=(\d+)/);
+                    if (idMatch && idMatch[1]) {
+                        result.patientId = idMatch[1];
+                    }
+                    
+                    // 提取门诊号 (使用#分割字符串，取最后一部分)
+                    const parts = content.split('#');
+                    if (parts.length > 1) {
+                        result.outpatientNo = parts[parts.length - 1];
+                    }
+                    
+                    // 验证所有必需字段是否都存在
+                    if (result.billNo && result.patientId && result.outpatientNo) {
+                        result.isValid = true;
+                    }
+                } catch (error) {
+                    // 解析过程中出现异常时记录错误
+                    console.error("解析二维码时出错:", error);
+                }
+            }
+            
+            return result;
+        }
+        
+        function initialize() {
+            // 初始化页面元素状态
+            statusIndicator.classList.remove('active'); // 初始状态为红色
+            displayButton.classList.remove('active');   // 初始状态为灰色
+            scanningNotice.style.display = 'none';      // 初始隐藏扫描提示
+            inputSection.style.display = 'block';       // 初始显示输入区域
+            qrCodeContent = ""; // 清空二维码内容
+            qrScanner = null;   // 清空二维码扫描器实例
+            document.getElementById("result").textContent = "等待扫描结果...";//rusult结果变成初始化状态 
+        }
+
+        // 给"扫码"按钮添加点击事件监听器
+        document.getElementById("scan-button").addEventListener("click", () => {
+
+            //调用初始化函数
+            initialize();
+
+            // 获取用户输入的工号和姓名
+            const employeeId = document.getElementById("employee-id").value;
+            const employeeName = document.getElementById("employee-name").value;
+    
+            // 验证用户输入
+            if (employeeId && employeeName) {
+                // 隐藏输入区域，显示扫描提示
+                inputSection.style.display = 'none';
+                scanningNotice.style.display = 'block';
+                
+                // 获取二维码扫描器容器并显示
+                const qrReaderElement = document.getElementById("qr-reader");
+                qrReaderElement.style.display = 'block';
+                
+                // 如果已有扫描器实例正在运行，先停止
+                if (qrScanner && qrScanner.isScanning) {
+                    qrScanner.stop();
+                }
+                
+                // 创建新的二维码扫描器实例（使用Html5Qrcode第三方库）
+                qrScanner = new Html5Qrcode("qr-reader");
+                
+                // 启动二维码扫描
+                qrScanner.start(
+                    { facingMode: "environment" },  // 使用后置摄像头
+                    {
+                        fps: 10,                    // 每秒扫描帧数
+                        qrbox: 250                  // 扫描框尺寸
+                    },
+                    // 扫描成功回调函数
+                    qrCodeMessage => {
+                        // 保存扫描到的二维码内容
+                        qrCodeContent = qrCodeMessage;
+                        
+                        // 停止扫描器
+                        qrScanner.stop();
+                        
+                        // 解析二维码内容
+                        const parsedData = parseQrCode(qrCodeContent);
+
+                        // 显示扫描结果消息
+                        if (parsedData.isValid) {
+                            // 更新状态指示灯（变为绿色）
+                            statusIndicator.classList.add('active');
+
+                            document.getElementById("result").textContent = "✓ 扫码成功！已获取目标二维码内容\n点击下方按钮查看详细信息";
+                            // 启用展示按钮
+                            displayButton.classList.add('active');
+                        } else {
+                            document.getElementById("result").textContent = "⚠️ 不是目标二维码，请扫描正确的二维码";
+                        }
+                        
+                        // 隐藏扫描界面，显示输入区域
+                        qrReaderElement.style.display = 'none';
+                        scanningNotice.style.display = 'none';
+                        //inputSection.style.display = 'block';
+                    },
+                    // 扫描错误回调函数
+                    errorMessage => {
+                        // 处理扫描错误（非致命错误）
+                        console.warn("二维码扫描错误:", errorMessage);
+                        statusIndicator.classList.remove('active'); // 更新状态指示灯
+                    }
+                ).catch(err => {
+                    // 处理启动摄像头失败的错误（致命错误）
+                    console.error("无法启动二维码扫描器:", err);
+                    alert("无法启动摄像头，请确保已授予相机权限并按照使用说明设置浏览器");
+                    
+                    // 重置界面状态
+                    statusIndicator.classList.remove('active');
+                    inputSection.style.display = 'block';
+                    scanningNotice.style.display = 'none';
+                    qrReaderElement.style.display = 'none';
+                    initialize();
+                });
+            } else {
+                // 用户未填写必要信息时提示
+                alert("请填写工号和姓名后再开始扫码！");
+            }
+        });
+    
+        // 给"展示内容"按钮添加点击事件监听器
+        displayButton.addEventListener("click", function() {
+            // 检查按钮是否处于激活状态（防止未扫描时点击）
+            if (!this.classList.contains('active')) return;
+            
+            // 获取用户输入的工号和姓名
+            const employeeId = document.getElementById("employee-id").value;
+            const employeeName = document.getElementById("employee-name").value;
+            
+            // 检查是否有扫描内容
+            if (!qrCodeContent) {
+                document.getElementById("result").textContent = "请先扫描二维码获取内容";
+                statusIndicator.classList.remove('active');
+                return;
+            }
+    
+            // 解析二维码内容
+            const parsedData = parseQrCode(qrCodeContent);
+            
+            // 构造结果对象（包含所有相关信息）
+            const resultData = {
+                qrCodeContent: qrCodeContent,        // 原始二维码内容
+                employeeId: employeeId || "未填写",   // 用户工号（带默认值）
+                employeeName: employeeName || "未填写",// 用户姓名（带默认值）
+                scanTime: new Date().toLocaleString(), // 扫描时间
+                billNo: parsedData.billNo || "未提取",
+                patientId: parsedData.patientId || "未提取",
+                outpatientNo: parsedData.outpatientNo || "未提取",
+            };
+    
+            // 将结果对象格式化为JSON字符串并显示在页面上
+            document.getElementById("result").textContent = JSON.stringify(resultData, null, 2);
+            
+            // 确保状态指示灯亮起
+            statusIndicator.classList.add('active');
+        });
+    </script>
+</body>
+</html>
