@@ -71,6 +71,15 @@
         const scanningNotice = document.getElementById('scanning-notice');   // 扫描提示元素
         const inputSection = document.getElementById('input-section');       // 输入区域元素
         const displayButton = document.getElementById('display-button');     // 展示按钮元素
+        
+        // 获取URL查询参数
+        function getQueryParam(name) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(name);
+        }
+        
+        // 获取accesskey参数
+        const accessKey = getQueryParam('accesskey');
     
         /**
          * 解析二维码内容函数
@@ -137,10 +146,36 @@
             document.getElementById("result").textContent = "等待扫描结果...";//rusult结果变成初始化状态 
         }
 
-        // 给"扫码"按钮添加点击事件监听器
-        document.getElementById("scan-button").addEventListener("click", () => {
+        // 调用Auth接口验证权限
+        (async function initAuth() {
+            if (!accessKey) {
+                alert('URL中缺少accesskey参数！');
+                return;
+            }
+            
+            try {
+                const response = await fetch('https://hcfybjy.pagekite.me/Auth', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ accesskey: accessKey })
+                });
+                
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || '权限验证失败');
+                }
+                console.log('Auth验证成功');
+            } catch (error) {
+                console.error('Auth错误:', error);
+                alert(`权限验证失败: ${error.message}`);
+            }
+        })();
 
-            //调用初始化函数
+        // 给"扫码"按钮添加点击事件监听器
+        document.getElementById("scan-button").addEventListener("click", async () => {
+            // 调用初始化函数
             initialize();
 
             // 获取用户输入的工号和姓名
@@ -149,6 +184,30 @@
     
             // 验证用户输入
             if (employeeId && employeeName) {
+                // 调用login接口验证用户
+                try {
+                    const loginResponse = await fetch('https://hcfybjy.pagekite.me/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            name: employeeName,
+                            account: employeeId,
+                            accesskey: accessKey
+                        })
+                    });
+                    
+                    const loginData = await loginResponse.json();
+                    if (!loginResponse.ok) {
+                        throw new Error(loginData.error || '登录验证失败');
+                    }
+                } catch (error) {
+                    console.error('Login错误:', error);
+                    alert(`登录验证失败: ${error.message}`);
+                    return;
+                }
+                
                 // 隐藏输入区域，显示扫描提示
                 inputSection.style.display = 'none';
                 scanningNotice.style.display = 'block';
@@ -198,7 +257,6 @@
                         // 隐藏扫描界面，显示输入区域
                         qrReaderElement.style.display = 'none';
                         scanningNotice.style.display = 'none';
-                        //inputSection.style.display = 'block';
                     },
                     // 扫描错误回调函数
                     errorMessage => {
@@ -225,7 +283,7 @@
         });
     
         // 给"展示内容"按钮添加点击事件监听器
-        displayButton.addEventListener("click", function() {
+        displayButton.addEventListener("click", async function() {
             // 检查按钮是否处于激活状态（防止未扫描时点击）
             if (!this.classList.contains('active')) return;
             
@@ -243,22 +301,38 @@
             // 解析二维码内容
             const parsedData = parseQrCode(qrCodeContent);
             
-            // 构造结果对象（包含所有相关信息）
-            const resultData = {
-                qrCodeContent: qrCodeContent,        // 原始二维码内容
-                employeeId: employeeId || "未填写",   // 用户工号（带默认值）
-                employeeName: employeeName || "未填写",// 用户姓名（带默认值）
-                scanTime: new Date().toLocaleString(), // 扫描时间
-                billNo: parsedData.billNo || "未提取",
-                patientId: parsedData.patientId || "未提取",
-                outpatientNo: parsedData.outpatientNo || "未提取",
-            };
-    
-            // 将结果对象格式化为JSON字符串并显示在页面上
-            document.getElementById("result").textContent = JSON.stringify(resultData, null, 2);
+            if (!parsedData.isValid) {
+                document.getElementById("result").textContent = "二维码无效，无法查询";
+                return;
+            }
             
-            // 确保状态指示灯亮起
-            statusIndicator.classList.add('active');
+            try {
+                // 调用feequery接口查询费用
+                const feeResponse = await fetch('https://hcfybjy.pagekite.me/feequery', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        no: parsedData.billNo,
+                        mzh: parsedData.outpatientNo,
+                        pid: parsedData.patientId,
+                        accesskey: accessKey
+                    })
+                });
+                
+                const feeData = await feeResponse.json();
+                if (!feeResponse.ok) {
+                    throw new Error(feeData.error || '费用查询失败');
+                }
+                
+                // 将查询结果格式化显示
+                document.getElementById("result").textContent = JSON.stringify(feeData, null, 2);
+                
+            } catch (error) {
+                console.error('Feequery错误:', error);
+                document.getElementById("result").textContent = `费用查询失败: ${error.message}`;
+            }
         });
     </script>
 </body>
