@@ -49,7 +49,7 @@
         <div class="instructions">
             <h3><i class="fas fa-info-circle"></i> 使用说明</h3>
             <ul>
-                <li>建议使用Microsoft Edge浏览器</li>
+                <li>建议使用Edge浏览器或微信内置浏览器</li>
             </ul>
             <div class="warning">
                 <i class="fas fa-exclamation-triangle"></i>
@@ -58,7 +58,7 @@
         </div>
 
         <div class="footer">
-            <p>系统版本: 0.8.2 | 最后更新: 2025-07-13</p>
+            <p>系统版本: 0.9.3 | 最后更新: 2025-07-17</p>
         </div>
     </div>
 
@@ -173,114 +173,118 @@
             }
         })();
 
-        // 给"扫码"按钮添加点击事件监听器
-        document.getElementById("scan-button").addEventListener("click", async () => {
-            // 调用初始化函数
-            initialize();
+    // 给"扫码"按钮添加点击事件监听器
+    document.getElementById("scan-button").addEventListener("click", async () => {
+        // 调用初始化函数
+        initialize();
 
-            // 获取用户输入的工号和姓名
-            const employeeId = document.getElementById("employee-id").value;
-            const employeeName = document.getElementById("employee-name").value;
+        // 获取用户输入的工号和姓名
+        const employeeId = document.getElementById("employee-id").value;
+        const employeeName = document.getElementById("employee-name").value;
     
-            // 验证用户输入
-            if (employeeId && employeeName) {
-                // 调用login接口验证用户
-                try {
-                    const loginResponse = await fetch('https://hcfybjy.pagekite.me/login', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            name: employeeName,
-                            account: employeeId,
-                            accesskey: accessKey
-                        })
-                    });
-                    
-                    const loginData = await loginResponse.json();
-                    if (!loginResponse.ok) {
-                        throw new Error(loginData.error || '登录验证失败');
-                    }
-                } catch (error) {
-                    console.error('Login错误:', error);
-                    alert(`登录验证失败: ${error.message}`);
+        // 验证用户输入
+        if (employeeId && employeeName) {
+            // 调用login接口验证用户
+            try {
+                const loginResponse = await fetch('https://hcfybjy.pagekite.me/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        name: employeeName,
+                        account: employeeId,
+                        accesskey: accessKey
+                    })
+                });
+                
+                const loginData = await loginResponse.json();
+                if (!loginResponse.ok || loginData[0]?.ACCOUNT_EXISTS !== 1) {
+                    const errorMessage = loginData[0]?.ACCOUNT_EXISTS === 0 
+                        ? '权限不足，无法打开摄像头！' 
+                        : loginData.error || '登录验证失败';
+                    alert(errorMessage);
                     return;
                 }
-                
-                // 隐藏输入区域，显示扫描提示
-                inputSection.style.display = 'none';
-                scanningNotice.style.display = 'block';
-                
-                // 获取二维码扫描器容器并显示
-                const qrReaderElement = document.getElementById("qr-reader");
-                qrReaderElement.style.display = 'block';
-                
-                // 如果已有扫描器实例正在运行，先停止
-                if (qrScanner && qrScanner.isScanning) {
-                    qrScanner.stop();
-                }
-                
-                // 创建新的二维码扫描器实例（使用Html5Qrcode第三方库）
-                qrScanner = new Html5Qrcode("qr-reader");
-                
-                // 启动二维码扫描
-                qrScanner.start(
-                    { facingMode: "environment" },  // 使用后置摄像头
-                    {
-                        fps: 10,                    // 每秒扫描帧数
-                        qrbox: 250                  // 扫描框尺寸
-                    },
-                    // 扫描成功回调函数
-                    qrCodeMessage => {
-                        // 保存扫描到的二维码内容
-                        qrCodeContent = qrCodeMessage;
-                        
-                        // 停止扫描器
-                        qrScanner.stop();
-                        
-                        // 解析二维码内容
-                        const parsedData = parseQrCode(qrCodeContent);
-
-                        // 显示扫描结果消息
-                        if (parsedData.isValid) {
-                            // 更新状态指示灯（变为绿色）
-                            statusIndicator.classList.add('active');
-
-                            document.getElementById("result").textContent = "✓ 扫码成功！已获取目标二维码内容\n点击下方按钮查看详细信息";
-                            // 启用展示按钮
-                            displayButton.classList.add('active');
-                        } else {
-                            document.getElementById("result").textContent = "⚠️ 不是目标二维码，请扫描正确的二维码";
-                        }
-                        
-                        // 隐藏扫描界面，显示输入区域
-                        qrReaderElement.style.display = 'none';
-                        scanningNotice.style.display = 'none';
-                    },
-                    // 扫描错误回调函数
-                    errorMessage => {
-                        // 处理扫描错误（非致命错误）
-                        console.warn("二维码扫描错误:", errorMessage);
-                        statusIndicator.classList.remove('active'); // 更新状态指示灯
-                    }
-                ).catch(err => {
-                    // 处理启动摄像头失败的错误（致命错误）
-                    console.error("无法启动二维码扫描器:", err);
-                    alert("无法启动摄像头，请确保已授予相机权限并按照使用说明设置浏览器");
-                    
-                    // 重置界面状态
-                    statusIndicator.classList.remove('active');
-                    inputSection.style.display = 'block';
-                    scanningNotice.style.display = 'none';
-                    qrReaderElement.style.display = 'none';
-                    initialize();
-                });
-            } else {
-                // 用户未填写必要信息时提示
-                alert("请填写工号和姓名后再开始扫码！");
+            } catch (error) {
+                console.error('Login错误:', error);
+                alert(`登录验证失败: ${error.message}`);
+                return;
             }
-        });
+            
+            // 隐藏输入区域，显示扫描提示
+            inputSection.style.display = 'none';
+            scanningNotice.style.display = 'block';
+            
+            // 获取二维码扫描器容器并显示
+            const qrReaderElement = document.getElementById("qr-reader");
+            qrReaderElement.style.display = 'block';
+            
+            // 如果已有扫描器实例正在运行，先停止
+            if (qrScanner && qrScanner.isScanning) {
+                qrScanner.stop();
+            }
+            
+            // 创建新的二维码扫描器实例（使用Html5Qrcode第三方库）
+            qrScanner = new Html5Qrcode("qr-reader");
+            
+            // 启动二维码扫描
+            qrScanner.start(
+                { facingMode: "environment" },  // 使用后置摄像头
+                {
+                    fps: 10,                    // 每秒扫描帧数
+                    qrbox: 250                  // 扫描框尺寸
+                },
+                // 扫描成功回调函数
+                qrCodeMessage => {
+                    // 保存扫描到的二维码内容
+                    qrCodeContent = qrCodeMessage;
+                    
+                    // 停止扫描器
+                    qrScanner.stop();
+                    
+                    // 解析二维码内容
+                    const parsedData = parseQrCode(qrCodeContent);
+
+                    // 显示扫描结果消息
+                    if (parsedData.isValid) {
+                        // 更新状态指示灯（变为绿色）
+                        statusIndicator.classList.add('active');
+
+                        document.getElementById("result").textContent = "✓ 扫码成功！已获取目标二维码内容\n点击下方按钮查看详细信息";
+                        // 启用展示按钮
+                        displayButton.classList.add('active');
+                    } else {
+                        document.getElementById("result").textContent = "⚠️ 不是目标二维码，请扫描正确的二维码";
+                    }
+                    
+                    // 隐藏扫描界面，显示输入区域
+                    qrReaderElement.style.display = 'none';
+                    scanningNotice.style.display = 'none';
+                },
+                // 扫描错误回调函数
+                errorMessage => {
+                    // 处理扫描错误（非致命错误）
+                    console.warn("二维码扫描错误:", errorMessage);
+                    statusIndicator.classList.remove('active'); // 更新状态指示灯
+                }
+            ).catch(err => {
+                // 处理启动摄像头失败的错误（致命错误）
+                console.error("无法启动二维码扫描器:", err);
+                alert("无法启动摄像头，请确保已授予相机权限并按照使用说明设置浏览器");
+                
+                // 重置界面状态
+                statusIndicator.classList.remove('active');
+                inputSection.style.display = 'block';
+                scanningNotice.style.display = 'none';
+                qrReaderElement.style.display = 'none';
+                initialize();
+            });
+        } else {
+            // 用户未填写必要信息时提示
+            alert("请填写工号和姓名后再开始扫码！");
+        }
+    });
     
         // 给"展示内容"按钮添加点击事件监听器
         displayButton.addEventListener("click", async function() {
@@ -326,8 +330,20 @@
                     throw new Error(feeData.error || '费用查询失败');
                 }
                 
-                // 将查询结果格式化显示
-                document.getElementById("result").textContent = JSON.stringify(feeData, null, 2);
+                // 处理费用查询结果 - 仅提取状态信息并以换行方式显示
+                if (Array.isArray(feeData)) {
+                    // 提取每条记录的"状态"字段值
+                    const statusLines = feeData.map(item => item["状态"] || "");
+                    
+                    // 过滤掉空值并连接成字符串
+                    const resultText = statusLines.filter(line => line).join("\n");
+                    
+                    // 显示结果
+                    document.getElementById("result").textContent = resultText;
+                } else {
+                    // 如果返回的不是数组，显示原始数据（用于调试）
+                    document.getElementById("result").textContent = JSON.stringify(feeData, null, 2);
+                }
                 
             } catch (error) {
                 console.error('Feequery错误:', error);
