@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>语音转文字</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; text-align: center; }
+    button { font-size: 20px; padding: 15px 40px; border-radius: 10px; background: #4A90D9; color: white; border: none; }
+    #result { margin-top: 30px; font-size: 18px; border: 1px solid #ccc; padding: 15px; min-height: 50px; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <h2>语音转文字</h2>
+  <button id="startBtn">开始说话</button>
+  <div id="result">点击按钮后说话，这里会显示识别结果。</div>
+
+  <script>
+    // 兼容不同浏览器前缀
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      document.getElementById('result').innerText = '你的浏览器不支持语音识别，请使用最新版 Chrome 或 Safari。';
+    } else {
+      const recognition = new SpeechRecognition();
+      recognition.lang = 'zh-CN';          // 设置识别语言为中文
+      recognition.interimResults = false; // 只返回最终结果（true会实时返回中间结果）
+      recognition.continuous = false;     // 单次识别，说完自动停止（更适合移动端）
+
+      const startBtn = document.getElementById('startBtn');
+      const resultDiv = document.getElementById('result');
+
+      startBtn.addEventListener('click', () => {
+        // iOS 要求必须在用户手势中启动语音识别
+        recognition.start();
+        resultDiv.innerText = '正在听...';
+      });
+
+      recognition.onresult = (event) => {
+        // 从结果中提取文字
+        const transcript = event.results[0][0].transcript;
+        resultDiv.innerText = transcript;
+      };
+
+      recognition.onerror = (event) => {
+        resultDiv.innerText = '识别出错: ' + event.error;
+      };
+
+      recognition.onend = () => {
+        // 识别结束，按钮可再次点击
+        console.log('语音识别结束');
+      };
+    }
+  </script>
+</body>
+</html>
